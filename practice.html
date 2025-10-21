@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPEAK</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body>
+    <!-- Main Page -->
+    <div id="mainPage">
+        <div class="container">
+            <header>
+                <div class="logo">
+                    <i class="fas fa-eye logo-icon"></i>
+                    <h1>Speech Performane Evaluation and Analysis Kernel</h1>
+                </div>
+                <p class="subtitle">Professional speech analysis with AI-powered feedback</p>
+            </header>
+
+            <!-- Camera Control -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title"><i class="fas fa-video"></i> Camera Control</h2>
+                    <div class="controls">
+                        <button class="btn btn-primary" id="startCameraBtn" onclick="startCamera()">
+                            <i class="fas fa-play"></i> Start Camera
+                        </button>
+                        <button class="btn btn-danger" id="stopCameraBtn" disabled onclick="stopCamera()">
+                            <i class="fas fa-stop"></i> Stop Camera
+                        </button>
+                        <button class="btn btn-primary" id="startBtn" disabled onclick="startSession()" title="Start eye tracking session">
+                            <i class="fas fa-eye"></i> Start Session
+                        </button>
+                        <button class="btn btn-danger" id="stopBtn" disabled onclick="stopSession()" title="Stop eye tracking session">
+                            <i class="fas fa-eye-slash"></i> Stop Session
+                        </button>
+                        <button class="btn btn-primary" id="analyzeBtn" disabled onclick="analyzeSession()" title="Analyze session data">
+                            <i class="fas fa-chart-bar"></i> Analyze
+                        </button>
+                    </div>
+                </div>
+                <div class="recording-content">
+                    <div class="video-section">
+                        <div class="video-container">
+                            <video id="video" autoplay playsinline></video>
+                            <canvas id="overlay"></canvas>
+                        </div>
+                    </div>
+                    <div class="coaching-section">
+                        <p class="coaching-tip" id="coachingTip">Click "Start Camera" to begin your session. Maintain eye contact and speak naturally.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Feedback Section -->
+            <div id="aiFeedbackContainer">
+                <!-- AI Feedback will be inserted here after analysis -->
+            </div>
+
+            <!-- Analysis Results (Eye Tracking Metrics) -->
+            <div id="analysisResults">
+                <!-- Eye tracking analysis results will appear here after AI feedback -->
+            </div>
+
+            <!-- Core Metrics (Initially Hidden, Shown After Analyze) -->
+            <div class="core-metrics" id="coreMetrics" style="display: none;">
+                <h3>Core Metrics</h3>
+                <div class="metrics-grid">
+                    <div class="metric-item">
+                        <div class="metric-icon">
+                            <i class="fas fa-eye"></i>
+                        </div>
+                        <div class="metric-content">
+                            <div class="metric-value" id="eyeContactValue">--%</div>
+                            <div class="metric-label">Eye Contact</div>
+                        </div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-icon">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <div class="metric-content">
+                            <div class="metric-value" id="currentDuration">0s</div>
+                            <div class="metric-label">Duration</div>
+                        </div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-icon">
+                            <i class="fas fa-volume-up"></i>
+                        </div>
+                        <div class="metric-content">
+                            <div class="metric-value" id="voiceVolume">-- dB</div>
+                            <div class="metric-label">Volume</div>
+                            <div class="volume-meter" id="volumeMeter"></div>
+                        </div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-icon">
+                            <i class="fas fa-music"></i>
+                        </div>
+                        <div class="metric-content">
+                            <div class="metric-value" id="voicePitch">-- Hz</div>
+                            <div class="metric-label">Pitch</div>
+                        </div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-icon">
+                            <i class="fas fa-microphone"></i>
+                        </div>
+                        <div class="metric-content">
+                            <div class="metric-value" id="speakingStatus">No</div>
+                            <div class="metric-label">Speaking</div>
+                        </div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-icon">
+                            <i class="fas fa-tachometer-alt"></i>
+                        </div>
+                        <div class="metric-content">
+                            <div class="score-display" id="liveScore">--</div>
+                            <div class="metric-label">Live Score</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Visualizations (Initially Hidden, Shown After Analyze) -->
+            <div class="visualizations" id="visualizations" style="display: none; grid-template-columns: repeat(2, 1fr);">
+                <div class="chart-container">
+                    <h3><i class="fas fa-chart-pie"></i> Eye Contact Distribution</h3>
+                    <canvas id="eyeContactChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3><i class="fas fa-wave-square"></i> Gaze Pattern</h3>
+                    <canvas id="gazePatternChart"></canvas>
+                </div>
+                <div class="chart-container waveform-chart">
+                    <h3><i class="fas fa-volume-up"></i> Volume Waveform</h3>
+                    <canvas id="volumeChart"></canvas>
+                </div>
+                <div class="chart-container pitch-plot">
+                    <h3><i class="fas fa-music"></i> Pitch Variation</h3>
+                    <canvas id="pitchChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Session Management Controls -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title"><i class="fas fa-cog"></i> Controls</h2>
+                    <div class="controls">
+                        <button class="btn btn-primary" onclick="viewRecords()">
+                            <i class="fas fa-list"></i> View Records
+                        </button>
+                        <button class="btn btn-warning" onclick="calibrateTracker()">
+                            <i class="fas fa-sliders-h"></i> Calibrate
+                        </button>
+                    </div>
+                </div>
+                <div id="results">
+                    <!-- Basic analysis results will appear here -->
+                </div>
+                <div id="speechResults" style="margin-top: 20px;">
+                    <!-- Speech analysis results will appear here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Records Page (initially hidden) -->
+    <div id="recordsPage" style="display: none;">
+        <div class="container">
+            <div class="records-header">
+                <h2><i class="fas fa-archive"></i> Session Records</h2>
+                <div class="controls">
+                    <button class="btn btn-primary" onclick="backToMain()">
+                        <i class="fas fa-arrow-left"></i> Back to Main
+                    </button>
+                    <button class="btn btn-danger" onclick="clearAllSessions()">
+                        <i class="fas fa-trash"></i> Clear All
+                    </button>
+                </div>
+            </div>
+            <div id="recordsList">
+                <!-- Session records will appear here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/speech_recording.js') }}"></script>
+</body>
+</html>
