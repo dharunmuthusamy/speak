@@ -14,6 +14,14 @@ from speech_analyzer import process_audio_from_web, calculate_engagement_score
 from models import db, init_db, User, Session, EyeTrackingData, SpeechAnalysisData, AIRecommendation, LeaderboardEntry, ProgressMetric
 from database_manager import DatabaseManager
 import bcrypt
+from sockets import send_dashboard_update
+
+from werkzeug.routing import BaseConverter
+
+class RegexConverter(BaseConverter):
+    def __init__(self, url_map, *items):
+        super(RegexConverter, self).__init__(url_map)
+        self.regex = items[0]
 
 # Load environment variables
 load_dotenv()
@@ -23,11 +31,14 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'speak-analysis-key'
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///speak.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///../speak.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# Register the regex converter
+app.url_map.converters['regex'] = RegexConverter
+
 CORS(app)  # Enable CORS for all routes
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins=["http://localhost:8080", "http://127.0.0.1:8080", "http://localhost:8081", "http://127.0.0.1:8081"])
 
 # Initialize database
 init_db(app)
@@ -432,6 +443,9 @@ def index():
 @app.route('/<path:path>')
 def serve_static(path):
     logging.info(f"Request: {request.method} {request.path}")
+    # Don't interfere with SocketIO routes
+    if path.startswith('socket.io'):
+        return jsonify({'error': 'Socket.IO endpoint'}), 404
     try:
         return send_from_directory('frontend/dist', path)
     except:
@@ -497,6 +511,10 @@ def get_session(session_id):
         # Get session from database
         db_session = db_manager.get_session(session_id)
         if db_session:
+            # Get AI recommendations for this session
+            recommendations = db_manager.get_session_recommendations(session_id)
+            # Add recommendations to the session data
+            db_session['ai_recommendations'] = recommendations
             return jsonify(db_session)
         else:
             return jsonify({'error': 'Session not found'}), 404
@@ -830,14 +848,61 @@ def delete_speech_analysis_data(data_id):
 def get_ai_recommendations():
     """Get AI recommendations"""
     try:
+        # Get user from token
+        token = request.headers.get('Authorization')
+        if not token:
+            return jsonify({'success': False, 'error': 'No token provided'}), 401
+
+        user_email = None
+        for email_part in token.split('_'):
+            if '@' in email_part:
+                user_email = email_part
+                break
+
+        if not user_email:
+            return jsonify({'success': False, 'error': 'Invalid token'}), 401
+
+        user = db_manager.get_user_by_email(user_email)
+        if not user:
+            return jsonify({'success': False, 'error': 'Invalid token'}), 401
+
+        user_id = user['id']
         status = request.args.get('status')
         limit = int(request.args.get('limit', 10))
 
-        recommendations = list(ai_recommendations.values())
-        if status:
-            recommendations = [r for r in recommendations if r.get('status') == status]
+        recommendations = db_manager.get_user_recommendations(user_id, status, limit)
+        return jsonify({'success': True, 'recommendations': recommendations})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-        recommendations = recommendations[:limit]
+@app.route('/ai/recommendations/latest', methods=['GET'])
+def get_latest_ai_recommendations():
+    """Get latest AI recommendations for the authenticated user"""
+    try:
+        # Get user from token
+        token = request.headers.get('Authorization')
+        if not token:
+            return jsonify({'success': False, 'error': 'No token provided'}), 401
+
+        user_email = None
+        for email_part in token.split('_'):
+            if '@' in email_part:
+                user_email = email_part
+                break
+
+        if not user_email:
+            return jsonify({'success': False, 'error': 'Invalid token'}), 401
+
+        user = db_manager.get_user_by_email(user_email)
+        if not user:
+            return jsonify({'success': False, 'error': 'Invalid token'}), 401
+
+        user_id = user['id']
+        limit = int(request.args.get('limit', 3))
+
+        # Get latest recommendations from database
+        recommendations = db_manager.get_user_recent_recommendations(user_id, limit)
+
         return jsonify({'success': True, 'recommendations': recommendations})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -944,16 +1009,10 @@ def get_leaderboard():
         period = request.args.get('period', 'all')
         limit = int(request.args.get('limit', 10))
 
-        # Mock leaderboard data (in production, calculate from real sessions)
-        leaderboard = [
-            {'rank': 1, 'name': 'Alice Johnson', 'score': 95, 'sessions': 12},
-            {'rank': 2, 'name': 'Bob Smith', 'score': 92, 'sessions': 8},
-            {'rank': 3, 'name': 'Carol Davis', 'score': 88, 'sessions': 15},
-            {'rank': 4, 'name': 'David Wilson', 'score': 85, 'sessions': 6},
-            {'rank': 5, 'name': 'Eva Brown', 'score': 82, 'sessions': 9}
-        ]
+        # Get real leaderboard data from database
+        leaderboard = db_manager.get_leaderboard(period, limit)
 
-        return jsonify({'success': True, 'leaderboard': leaderboard[:limit]})
+        return jsonify({'success': True, 'leaderboard': leaderboard})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -999,21 +1058,31 @@ def get_progress_metrics():
 
         user_id = user['id']
 
-        # Get real progress metrics from database
-        progress_metrics = db_manager.get_progress_metrics(user_id, days=days)
+        # Get user sessions and calculate metrics from session analysis data
+        user_sessions = db_manager.get_user_sessions(user_id, limit=100)
 
-        # Calculate trends and averages
+        # Calculate trends and averages from session data
         eye_contact_scores = []
         speech_accuracy_scores = []
         wpm_scores = []
 
-        for metric in progress_metrics:
-            if metric['metric_type'] == 'eye_contact_score':
-                eye_contact_scores.append(metric['value'])
-            elif metric['metric_type'] == 'speech_accuracy':
-                speech_accuracy_scores.append(metric['value'])
-            elif metric['metric_type'] == 'wpm':
-                wpm_scores.append(metric['value'])
+        for session in user_sessions:
+            analysis = session.get('analysis', {})
+            if analysis:
+                core_metrics = analysis.get('core_metrics', {})
+                speech_metrics = analysis.get('speech_metrics', {})
+
+                eye_contact = core_metrics.get('eye_contact_score', 0)
+                if eye_contact > 0:
+                    eye_contact_scores.append(eye_contact)
+
+                speech_accuracy = speech_metrics.get('accuracy_score', 0)
+                if speech_accuracy > 0:
+                    speech_accuracy_scores.append(speech_accuracy)
+
+                wpm = speech_metrics.get('wpm', 0)
+                if wpm > 0:
+                    wpm_scores.append(wpm)
 
         # Calculate averages
         avg_eye_contact = sum(eye_contact_scores) / len(eye_contact_scores) if eye_contact_scores else 0
@@ -1074,11 +1143,13 @@ def handle_connect():
 @socketio.on('start_session')
 def handle_start_session(data):
     session_id = data.get('session_id', f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+    user_id = data.get('user_id')
     active_sessions[session_id] = {
         'start_time': datetime.now().isoformat(),
         'analysis': None,
         'is_active': True,
-        'speech_analysis': None
+        'speech_analysis': None,
+        'user_id': user_id
     }
     
     # Reset the eye tracker for new session
@@ -1256,6 +1327,35 @@ def handle_analyze_session(data):
             # Save session with combined data
             save_session(session_id, active_sessions[session_id])
 
+            # Store progress metrics and generate AI recommendations after session completion
+            session_data = active_sessions[session_id]
+            user_id = session_data.get('user_id')
+
+            if user_id:
+                # Store progress metrics
+                db_manager.store_session_progress_metrics(user_id, combined_analysis)
+
+                # Generate AI recommendations
+                ai_feedback = session_data.get('ai_feedback', {})
+                db_manager.generate_ai_recommendations_from_analysis(session_id, user_id, combined_analysis, ai_feedback)
+
+                # Update leaderboard
+                db_manager.update_leaderboard(user_id, 'all')
+                db_manager.update_leaderboard(user_id, 'weekly')
+                db_manager.update_leaderboard(user_id, 'monthly')
+
+                # Send real-time dashboard update to all connected clients
+                dashboard_metrics = {
+                    'user_id': user_id,
+                    'eye_contact': combined_analysis['core_metrics']['eye_contact_score'],
+                    'speech_accuracy': combined_analysis.get('speech_metrics', {}).get('accuracy_score', 0),
+                    'wpm': combined_analysis.get('speech_metrics', {}).get('wpm', 0),
+                    'average_score': combined_analysis['overall_engagement'],
+                    'recommendations': db_manager.get_user_recent_recommendations(user_id, limit=3),
+                    'timestamp': datetime.now().isoformat()
+                }
+                send_dashboard_update(user_id, dashboard_metrics)
+
             print(f'📊 Combined analysis complete for {session_id} (Voice data: {len(voice_data)} points)')
             socketio.emit('analysis_complete', {
                 'session_id': session_id,
@@ -1290,6 +1390,25 @@ def get_ai_feedback_background(session_id):
                 'ai_feedback': ai_feedback
             })
             print(f'✅ AI feedback emitted for {session_id}')
+
+            # Send dashboard update with latest AI recommendations
+            user_id = session_data.get('user_id')
+            if user_id:
+                # Get the latest recommendations including the newly generated AI feedback
+                latest_recommendations = db_manager.get_user_recent_recommendations(user_id, limit=3)
+
+                # Prepare dashboard update payload with latest recommendations
+                dashboard_metrics = {
+                    'user_id': user_id,
+                    'eye_contact': session_data.get('core_metrics', {}).get('eye_contact_score', 0),
+                    'speech_accuracy': session_data.get('speech_metrics', {}).get('accuracy_score', 0),
+                    'wpm': session_data.get('speech_metrics', {}).get('wpm', 0),
+                    'average_score': session_data.get('overall_engagement', 0),
+                    'recommendations': latest_recommendations,
+                    'timestamp': datetime.now().isoformat()
+                }
+                send_dashboard_update(user_id, dashboard_metrics)
+                print(f'📡 Dashboard updated with latest AI recommendations for user {user_id}')
         else:
             print(f"❌ Session {session_id} not found in active_sessions")
             # Emit fallback feedback even if session not found
@@ -1461,6 +1580,7 @@ def save_session(session_id, session_data):
         user_id = session_data.get('user_id')
 
         # Check if session already exists
+
         existing_session = db_manager.get_session(session_id)
 
         if existing_session:

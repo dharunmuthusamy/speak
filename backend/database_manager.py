@@ -6,7 +6,9 @@ Handles all database operations including CRUD operations for sessions, users, a
 from models import db, User, Session, EyeTrackingData, SpeechAnalysisData, AIRecommendation, LeaderboardEntry, ProgressMetric
 from datetime import datetime, timedelta
 import json
+import time
 from sqlalchemy import func, desc, and_
+from functools import wraps
 
 class DatabaseManager:
     def __init__(self):
@@ -207,6 +209,117 @@ class DatabaseManager:
             db.session.rollback()
             raise e
 
+    def generate_ai_recommendations_from_analysis(self, session_id, user_id, session_analysis, ai_feedback):
+        """Generate AI recommendations based on session analysis and AI feedback"""
+        try:
+            recommendations = []
+
+            # Extract key metrics
+            core_metrics = session_analysis.get('core_metrics', {})
+            speech_metrics = session_analysis.get('speech_metrics', {})
+            voice_metrics = session_analysis.get('voice_metrics', {})
+
+            eye_contact_score = core_metrics.get('eye_contact_score', 0)
+            speech_accuracy = speech_metrics.get('accuracy_score', 0)
+            wpm = speech_metrics.get('wpm', 0)
+            overall_engagement = session_analysis.get('overall_engagement', 0)
+
+            # Generate recommendations based on performance
+
+            # Eye contact recommendations
+            if eye_contact_score < 60:
+                recommendations.append({
+                    'type': 'eye_contact',
+                    'title': 'Improve Eye Contact',
+                    'description': f'Your eye contact score was {eye_contact_score}%. Practice maintaining eye contact for 50-70% of your speaking time. Try looking directly at the camera lens and imagine speaking to a friend.',
+                    'priority': 'high' if eye_contact_score < 40 else 'medium'
+                })
+            elif eye_contact_score < 80:
+                recommendations.append({
+                    'type': 'eye_contact',
+                    'title': 'Enhance Eye Contact Consistency',
+                    'description': f'Your eye contact score was {eye_contact_score}%. Focus on maintaining consistent eye contact throughout your presentation. Avoid looking away too frequently.',
+                    'priority': 'medium'
+                })
+
+            # Speech accuracy recommendations
+            if speech_accuracy < 70:
+                recommendations.append({
+                    'type': 'speech_clarity',
+                    'title': 'Improve Speech Clarity',
+                    'description': f'Your speech accuracy was {speech_accuracy}%. Practice pronunciation and reduce filler words. Record yourself speaking and listen for areas to improve.',
+                    'priority': 'high' if speech_accuracy < 50 else 'medium'
+                })
+
+            # WPM recommendations
+            if wpm < 120:
+                recommendations.append({
+                    'type': 'speaking_pace',
+                    'title': 'Adjust Speaking Pace',
+                    'description': f'Your speaking rate was {wpm} WPM. Aim for 120-150 WPM for optimal comprehension. Practice reading aloud at different speeds.',
+                    'priority': 'medium'
+                })
+            elif wpm > 180:
+                recommendations.append({
+                    'type': 'speaking_pace',
+                    'title': 'Slow Down Speaking Pace',
+                    'description': f'Your speaking rate was {wpm} WPM. Speaking too quickly can reduce clarity. Practice pausing between key points.',
+                    'priority': 'medium'
+                })
+
+            # Voice recommendations
+            if voice_metrics:
+                volume_variance = voice_metrics.get('volume_variance', 0)
+                if volume_variance > 1000:  # High variance indicates inconsistent volume
+                    recommendations.append({
+                        'type': 'voice_volume',
+                        'title': 'Stabilize Voice Volume',
+                        'description': 'Your voice volume varied significantly. Practice maintaining consistent volume throughout your presentation.',
+                        'priority': 'medium'
+                    })
+
+                pitch_range = voice_metrics.get('pitch_range', 0)
+                if pitch_range < 50:  # Low pitch variation
+                    recommendations.append({
+                        'type': 'voice_modulation',
+                        'title': 'Increase Voice Modulation',
+                        'description': 'Your voice pitch varied little. Practice varying your pitch to emphasize important points and maintain audience interest.',
+                        'priority': 'medium'
+                    })
+
+            # Overall engagement recommendations
+            if overall_engagement < 60:
+                recommendations.append({
+                    'type': 'overall_engagement',
+                    'title': 'Boost Overall Engagement',
+                    'description': f'Your overall engagement score was {overall_engagement}%. Focus on combining strong eye contact, clear speech, and confident delivery.',
+                    'priority': 'high'
+                })
+
+            # Add AI feedback-based recommendations if available
+            if ai_feedback and 'actionable_strategies' in ai_feedback:
+                for strategy in ai_feedback['actionable_strategies'][:2]:  # Limit to 2 AI strategies
+                    recommendations.append({
+                        'type': 'ai_generated',
+                        'title': strategy.get('strategy', 'AI Recommendation'),
+                        'description': strategy.get('description', ''),
+                        'priority': 'medium'
+                    })
+
+            # Store recommendations in database
+            stored_recommendations = []
+            for rec_data in recommendations:
+                stored_rec = self.create_ai_recommendation(session_id, user_id, rec_data)
+                if stored_rec:
+                    stored_recommendations.append(stored_rec)
+
+            print(f"✅ Generated and stored {len(stored_recommendations)} AI recommendations for session {session_id}")
+            return stored_recommendations
+
+        except Exception as e:
+            print(f"❌ Error generating AI recommendations: {e}")
+            return []
+
     def get_user_recommendations(self, user_id, status=None, limit=20):
         """Get recommendations for a user"""
         query = AIRecommendation.query.filter_by(user_id=user_id)
@@ -214,6 +327,39 @@ class DatabaseManager:
             query = query.filter_by(status=status)
         recommendations = query.order_by(desc(AIRecommendation.created_at)).limit(limit).all()
         return [rec.to_dict() for rec in recommendations]
+
+    def get_user_recent_recommendations(self, user_id, limit=3):
+        """Get most recent AI recommendations for a user (for dashboard)"""
+        try:
+            recommendations = AIRecommendation.query.filter_by(user_id=user_id)\
+                .order_by(desc(AIRecommendation.created_at))\
+                .limit(limit)\
+                .all()
+
+            return [{
+                'id': rec.id,
+                'type': rec.recommendation_type,
+                'title': rec.title,
+                'description': rec.description,
+                'priority': rec.priority,
+                'status': rec.status,
+                'created_at': rec.created_at.isoformat() if rec.created_at else None
+            } for rec in recommendations]
+        except Exception as e:
+            print(f"Error getting recent recommendations: {e}")
+            return []
+
+    def get_session_recommendations(self, session_id):
+        """Get AI recommendations for a specific session"""
+        try:
+            recommendations = AIRecommendation.query.filter_by(session_id=session_id)\
+                .order_by(desc(AIRecommendation.created_at))\
+                .all()
+
+            return [rec.to_dict() for rec in recommendations]
+        except Exception as e:
+            print(f"Error getting session recommendations: {e}")
+            return []
 
     def update_recommendation_status(self, rec_id, status):
         """Update recommendation status"""
@@ -366,6 +512,100 @@ class DatabaseManager:
 
         metrics = query.order_by(ProgressMetric.date).all()
         return [metric.to_dict() for metric in metrics]
+
+    def store_session_progress_metrics(self, user_id, session_analysis):
+        """Store progress metrics after session completion"""
+        try:
+            today = datetime.utcnow().date()
+
+            # Extract metrics from session analysis
+            core_metrics = session_analysis.get('core_metrics', {})
+            speech_metrics = session_analysis.get('speech_metrics', {})
+            voice_metrics = session_analysis.get('voice_metrics', {})
+
+            metrics_to_store = []
+
+            # Eye contact score
+            eye_contact_score = core_metrics.get('eye_contact_score', 0)
+            if eye_contact_score > 0:
+                metrics_to_store.append({
+                    'metric_type': 'eye_contact',
+                    'value': eye_contact_score,
+                    'date': today
+                })
+
+            # Speech accuracy
+            speech_accuracy = speech_metrics.get('accuracy_score', 0)
+            if speech_accuracy > 0:
+                metrics_to_store.append({
+                    'metric_type': 'speech_accuracy',
+                    'value': speech_accuracy,
+                    'date': today
+                })
+
+            # WPM
+            wpm = speech_metrics.get('wpm', 0)
+            if wpm > 0:
+                metrics_to_store.append({
+                    'metric_type': 'wpm',
+                    'value': wpm,
+                    'date': today
+                })
+
+            # Voice metrics
+            if voice_metrics:
+                avg_volume = voice_metrics.get('average_volume', 0)
+                if avg_volume > 0:
+                    metrics_to_store.append({
+                        'metric_type': 'voice_volume',
+                        'value': avg_volume,
+                        'date': today
+                    })
+
+                pitch_range = voice_metrics.get('pitch_range', 0)
+                if pitch_range > 0:
+                    metrics_to_store.append({
+                        'metric_type': 'voice_pitch_range',
+                        'value': pitch_range,
+                        'date': today
+                    })
+
+            # Overall engagement
+            overall_engagement = session_analysis.get('overall_engagement', 0)
+            if overall_engagement > 0:
+                metrics_to_store.append({
+                    'metric_type': 'overall_engagement',
+                    'value': overall_engagement,
+                    'date': today
+                })
+
+            # Store each metric (update if exists for today)
+            for metric_data in metrics_to_store:
+                existing = ProgressMetric.query.filter_by(
+                    user_id=user_id,
+                    metric_type=metric_data['metric_type'],
+                    date=metric_data['date']
+                ).first()
+
+                if existing:
+                    existing.value = metric_data['value']
+                else:
+                    metric = ProgressMetric(
+                        user_id=user_id,
+                        metric_type=metric_data['metric_type'],
+                        value=metric_data['value'],
+                        date=metric_data['date']
+                    )
+                    db.session.add(metric)
+
+            db.session.commit()
+            print(f"✅ Stored {len(metrics_to_store)} progress metrics for user {user_id}")
+            return True
+
+        except Exception as e:
+            db.session.rollback()
+            print(f"❌ Error storing progress metrics: {e}")
+            return False
 
     # Analytics and Reporting
     def get_user_stats(self, user_id):

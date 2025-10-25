@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { RotateCcw, Eye, CheckCircle } from 'lucide-react';
@@ -23,6 +24,7 @@ interface MainPageProps {
 
 const MainPage: React.FC<MainPageProps> = ({ onViewRecords }) => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [isRecording, setIsRecording] = useState(false);
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [showStartSession, setShowStartSession] = useState(false);
@@ -132,8 +134,11 @@ const MainPage: React.FC<MainPageProps> = ({ onViewRecords }) => {
         await eyeTrackingService.initialize(videoRef.current, canvasRef.current);
       }
 
-      // Start WebSocket session
-      websocketService.startSession({ session_id: newSessionId });
+      // Start WebSocket session with user_id
+      websocketService.startSession({
+        session_id: newSessionId,
+        user_id: user?.id
+      });
 
       // Start eye tracking
       eyeTrackingService.startTracking((data) => {

@@ -14,3 +14,5 @@ requests==2.31.0
 psycopg2-binary
 flask-sqlalchemy
 werkzeug==2.3.7
+pyautogui
+Pillow

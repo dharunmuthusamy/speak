@@ -7,11 +7,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
-import { LogOut, User as UserIcon, Video, TrendingUp, Award, Users, Eye, Gauge, Volume2, Zap, Star, BarChart3 } from "lucide-react";
+import { LogOut, User as UserIcon, Video, TrendingUp, Award, Users, Eye, Gauge, Volume2, Zap, Star, BarChart3, Wifi, WifiOff } from "lucide-react";
+import { useDashboardSocket } from "@/hooks/useDashboardSocket";
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { user, logout, isLoading } = useAuth();
+  const { isConnected, lastUpdate } = useDashboardSocket(user?.id?.toString());
   const [dashboardData, setDashboardData] = useState({
     metrics: null,
     sessions: [],
@@ -19,6 +21,13 @@ const Dashboard = () => {
     leaderboard: []
   });
   const [loadingData, setLoadingData] = useState(true);
+  const [animatedMetrics, setAnimatedMetrics] = useState({
+    sessionsCompleted: 0,
+    averageScore: 0,
+    eyeContact: 0,
+    speechAccuracy: 0,
+    wpm: 0
+  });
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -27,6 +36,63 @@ const Dashboard = () => {
       // User is logged in, stay on dashboard
     }
   }, [user, isLoading, navigate]);
+
+  // Animate metrics when they change
+  useEffect(() => {
+    if (dashboardData.metrics) {
+      const targetMetrics = {
+        sessionsCompleted: dashboardData.metrics.sessions_completed || 0,
+        averageScore: dashboardData.metrics.average_score || 0,
+        eyeContact: dashboardData.metrics.average_eye_contact || 0,
+        speechAccuracy: dashboardData.metrics.average_speech_accuracy || 0,
+        wpm: dashboardData.metrics.average_wpm || 0
+      };
+
+      // Animate from current to target values
+      const duration = 1000; // 1 second animation
+      const steps = 60;
+      const stepDuration = duration / steps;
+
+      let step = 0;
+      const animate = () => {
+        step++;
+        const progress = step / steps;
+
+        setAnimatedMetrics(prev => ({
+          sessionsCompleted: prev.sessionsCompleted + (targetMetrics.sessionsCompleted - prev.sessionsCompleted) * progress,
+          averageScore: prev.averageScore + (targetMetrics.averageScore - prev.averageScore) * progress,
+          eyeContact: prev.eyeContact + (targetMetrics.eyeContact - prev.eyeContact) * progress,
+          speechAccuracy: prev.speechAccuracy + (targetMetrics.speechAccuracy - prev.speechAccuracy) * progress,
+          wpm: prev.wpm + (targetMetrics.wpm - prev.wpm) * progress
+        }));
+
+        if (step < steps) {
+          setTimeout(animate, stepDuration);
+        }
+      };
+
+      animate();
+    }
+  }, [dashboardData.metrics]);
+
+  // Update dashboard data when real-time update is received
+  useEffect(() => {
+    if (lastUpdate) {
+      setDashboardData(prev => ({
+        ...prev,
+        metrics: {
+          ...prev.metrics,
+          average_eye_contact: lastUpdate.eye_contact,
+          average_speech_accuracy: lastUpdate.speech_accuracy,
+          average_wpm: lastUpdate.wpm,
+          average_score: lastUpdate.average_score
+        },
+        recommendations: lastUpdate.recommendations || prev.recommendations
+      }));
+
+      toast.success("Dashboard updated with latest session data!");
+    }
+  }, [lastUpdate]);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -93,9 +159,6 @@ const Dashboard = () => {
             <Button variant="ghost" size="sm" className="bg-primary/10">Dashboard</Button>
             <Button variant="ghost" size="sm" onClick={() => navigate('/practice')}>Practice</Button>
             <Button variant="ghost" size="sm" onClick={() => navigate('/session-records')}>Session Records</Button>
-            <div className="w-8 h-8 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center cursor-pointer">
-              <UserIcon className="h-4 w-4 text-primary-foreground" />
-            </div>
             <Button
               variant="outline"
               size="sm"
@@ -127,7 +190,7 @@ const Dashboard = () => {
                 <div className="flex-1">
                   <div className="flex items-baseline gap-2 mb-2">
                     <span className="text-5xl font-bold text-primary">
-                      {dashboardData.sessions?.length || 0}
+                      {Math.round(animatedMetrics.sessionsCompleted)}
                     </span>
                   </div>
                   <p className="text-sm text-muted-foreground">Sessions Completed</p>
@@ -136,9 +199,9 @@ const Dashboard = () => {
                   <div>
                     <div className="flex justify-between text-sm mb-1">
                       <span>Average Score</span>
-                    <span className="font-bold">{Math.round((dashboardData.metrics?.average_score || 0) * 100)}%</span>
+                    <span className="font-bold">{Math.round(animatedMetrics.averageScore)}%</span>
                     </div>
-                    <Progress value={Math.round((dashboardData.metrics?.average_score || 0) * 100)} className="h-2" />
+                    <Progress value={Math.round(animatedMetrics.averageScore)} className="h-2" />
                   </div>
                   <div>
                     <div className="flex justify-between text-sm mb-1">
@@ -166,13 +229,13 @@ const Dashboard = () => {
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Last Week</span>
                   <span className="text-2xl font-bold">
-                    {Math.round((dashboardData.metrics?.average_eye_contact || 0) * 100 - 7)}
+                    {Math.round((animatedMetrics.eyeContact) - 7)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">This Week</span>
                   <span className="text-2xl font-bold text-primary">
-                    {Math.round((dashboardData.metrics?.average_eye_contact || 0) * 100)}
+                    {Math.round(animatedMetrics.eyeContact )}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 pt-2 border-t">
@@ -202,10 +265,10 @@ const Dashboard = () => {
                     <span className="text-sm font-medium">Eye Contact</span>
                   </div>
                   <span className="text-lg font-bold text-primary">
-                    {Math.round((dashboardData.metrics?.average_eye_contact || 0) * 100)}%
+                    {Math.round(animatedMetrics.eyeContact)}%
                   </span>
                 </div>
-                <Progress value={Math.round((dashboardData.metrics?.average_eye_contact || 0) * 100)} className="h-3" />
+                <Progress value={Math.round(animatedMetrics.eyeContact)} className="h-3" />
                 <p className="text-xs text-muted-foreground mt-1">Grade: A-</p>
               </div>
 
@@ -216,10 +279,10 @@ const Dashboard = () => {
                     <span className="text-sm font-medium">Speech Accuracy</span>
                   </div>
                   <span className="text-lg font-bold text-accent">
-                    {Math.round((dashboardData.metrics?.average_speech_accuracy || 0) * 100)}%
+                    {Math.round(animatedMetrics.speechAccuracy)}%
                   </span>
                 </div>
-                <Progress value={Math.round((dashboardData.metrics?.average_speech_accuracy || 0) * 100)} className="h-3" />
+                <Progress value={Math.round(animatedMetrics.speechAccuracy)} className="h-3" />
                 <p className="text-xs text-muted-foreground mt-1">Grade: B+</p>
               </div>
 
@@ -230,10 +293,10 @@ const Dashboard = () => {
                     <span className="text-sm font-medium">WPM</span>
                   </div>
                   <span className="text-lg font-bold text-primary">
-                    {Math.round(dashboardData.metrics?.average_wpm || 0)}
+                    {Math.round(animatedMetrics.wpm)}
                   </span>
                 </div>
-                <Progress value={Math.min(Math.round(dashboardData.metrics?.average_wpm || 0), 100)} className="h-3" />
+                <Progress value={Math.min(Math.round(animatedMetrics.wpm), 100)} className="h-3" />
                 <p className="text-xs text-muted-foreground mt-1">Grade: B</p>
               </div>
             </CardContent>
@@ -284,21 +347,21 @@ const Dashboard = () => {
                 <Award className="h-5 w-5 text-primary" />
                 My Achievements
               </CardTitle>
-              <CardDescription>Badges you've earned</CardDescription>
+              <CardDescription>You haven't earned any of these badges</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-3 gap-4">
-                <div className="flex flex-col items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
-                  <div className="w-12 h-12 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center">
-                    <Gauge className="h-6 w-6 text-primary-foreground" />
+                <div className="flex flex-col items-center gap-2 p-3 rounded-lg bg-muted/30 border border-dashed border-muted-foreground/20">
+                  <div className="w-12 h-12 bg-muted/50 rounded-full flex items-center justify-center">
+                    <Gauge className="h-6 w-6 text-muted-foreground" />
                   </div>
-                  <span className="text-xs font-medium text-center">Pacing Pro</span>
+                  <span className="text-xs text-muted-foreground text-center">Pacing Pro</span>
                 </div>
-                <div className="flex flex-col items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
-                  <div className="w-12 h-12 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center">
-                    <Eye className="h-6 w-6 text-primary-foreground" />
+                <div className="flex flex-col items-center gap-2 p-3 rounded-lg bg-muted/30 border border-dashed border-muted-foreground/20">
+                  <div className="w-12 h-12 bg-muted/50 rounded-full flex items-center justify-center">
+                    <Eye className="h-6 w-6 text-muted-foreground" />
                   </div>
-                  <span className="text-xs font-medium text-center">Eye Contact Champion</span>
+                  <span className="text-xs text-muted-foreground text-center">Eye Contact Champion</span>
                 </div>
                 <div className="flex flex-col items-center gap-2 p-3 rounded-lg bg-muted/30 border border-dashed border-muted-foreground/20">
                   <div className="w-12 h-12 bg-muted/50 rounded-full flex items-center justify-center">
@@ -306,11 +369,11 @@ const Dashboard = () => {
                   </div>
                   <span className="text-xs text-muted-foreground text-center">Clarity Master</span>
                 </div>
-                <div className="flex flex-col items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
-                  <div className="w-12 h-12 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center">
-                    <Zap className="h-6 w-6 text-primary-foreground" />
+                <div className="flex flex-col items-center gap-2 p-3 rounded-lg bg-muted/30 border border-dashed border-muted-foreground/20">
+                  <div className="w-12 h-12 bg-muted/50 rounded-full flex items-center justify-center">
+                    <Zap className="h-6 w-6 text-muted-foreground" />
                   </div>
-                  <span className="text-xs font-medium text-center">10 Day Streak</span>
+                  <span className="text-xs text-muted-foreground text-center">10 Day Streak</span>
                 </div>
                 <div className="flex flex-col items-center gap-2 p-3 rounded-lg bg-muted/30 border border-dashed border-muted-foreground/20">
                   <div className="w-12 h-12 bg-muted/50 rounded-full flex items-center justify-center">

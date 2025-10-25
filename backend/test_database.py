@@ -43,6 +43,13 @@ def test_user_operations(db_manager, app):
     print("\n👤 Testing User operations...")
     try:
         with app.app_context():
+            # Clean up any existing test user first
+            existing_user = User.query.filter_by(email="test@example.com").first()
+            if existing_user:
+                db.session.delete(existing_user)
+                db.session.commit()
+                print("🧹 Cleaned up existing test user")
+
             # Create user
             user_data = db_manager.create_user(
                 email="test@example.com",
