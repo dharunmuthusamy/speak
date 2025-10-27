@@ -7,7 +7,7 @@ mediapipe==0.10.7
 numpy==1.24.0
 librosa==0.10.1
 openai-whisper==20231117
-PyAudio==0.2.11
+PyAudio==0.2.13
 soundfile==0.12.1
 matplotlib==3.7.2
 requests==2.31.0

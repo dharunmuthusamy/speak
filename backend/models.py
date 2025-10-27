@@ -22,8 +22,8 @@ class User(db.Model):
             'id': self.id,
             'email': self.email,
             'name': self.name,
-            'created_at': self.created_at.isoformat(),
-            'updated_at': self.updated_at.isoformat()
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
 
 class Session(db.Model):
@@ -61,8 +61,8 @@ class Session(db.Model):
             'ai_feedback': json.loads(self.ai_feedback_data) if self.ai_feedback_data else {},
             'total_points': self.total_points,
             'duration': self.duration,
-            'created_at': self.created_at.isoformat(),
-            'updated_at': self.updated_at.isoformat()
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
 
     def set_analysis(self, analysis_dict):
@@ -98,7 +98,7 @@ class EyeTrackingData(db.Model):
         return {
             'id': self.id,
             'session_id': self.session_id,
-            'timestamp': self.timestamp.isoformat(),
+            'timestamp': self.timestamp.isoformat() if self.timestamp else None,
             'eye_contact': self.eye_contact,
             'eye_contact_percentage': self.eye_contact_percentage,
             'gaze_x': self.gaze_x,
@@ -134,7 +134,7 @@ class SpeechAnalysisData(db.Model):
         return {
             'id': self.id,
             'session_id': self.session_id,
-            'timestamp': self.timestamp.isoformat(),
+            'timestamp': self.timestamp.isoformat() if self.timestamp else None,
             'accuracy_score': self.accuracy_score,
             'wpm': self.wpm,
             'grammar_errors': self.grammar_errors,
@@ -175,8 +175,8 @@ class AIRecommendation(db.Model):
             'description': self.description,
             'priority': self.priority,
             'status': self.status,
-            'created_at': self.created_at.isoformat(),
-            'updated_at': self.updated_at.isoformat()
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
 
 class LeaderboardEntry(db.Model):
@@ -201,8 +201,8 @@ class LeaderboardEntry(db.Model):
             'score': self.score,
             'sessions_count': self.sessions_count,
             'rank': self.rank,
-            'created_at': self.created_at.isoformat(),
-            'updated_at': self.updated_at.isoformat()
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
 
 class ProgressMetric(db.Model):
@@ -224,9 +224,9 @@ class ProgressMetric(db.Model):
             'user_id': self.user_id,
             'metric_type': self.metric_type,
             'value': self.value,
-            'date': self.date.isoformat(),
-            'created_at': self.created_at.isoformat(),
-            'updated_at': self.updated_at.isoformat()
+            'date': self.date.isoformat() if self.date else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
 
 # Database initialization function

@@ -31,7 +31,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'speak-analysis-key'
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///../speak.db')
+db_path = os.path.join(os.getcwd(), 'instance', 'speak.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Register the regex converter
@@ -40,8 +41,7 @@ app.url_map.converters['regex'] = RegexConverter
 CORS(app)  # Enable CORS for all routes
 socketio = SocketIO(app, cors_allowed_origins=["http://localhost:8080", "http://127.0.0.1:8080", "http://localhost:8081", "http://127.0.0.1:8081"])
 
-# Initialize database
-init_db(app)
+# Database will be initialized in main block
 
 # Initialize database manager
 db_manager = DatabaseManager()
@@ -1134,6 +1134,90 @@ def welcome():
     logging.info(f"Request: {request.method} {request.path}")
     return jsonify({'message': 'Welcome to the SPEAK API!'})
 
+@app.route('/analyze', methods=['POST'])
+def analyze_session():
+    """Analyze session and save all data to database"""
+    try:
+        data = request.get_json()
+        session_id = data.get('session_id')
+        user_id = data.get('user_id')
+
+        if not session_id or not user_id:
+            return jsonify({'status': 'error', 'message': 'session_id and user_id are required'}), 400
+
+        print(f"🔄 Starting analysis for session {session_id}, user {user_id}")
+
+        # Retrieve session data from active_sessions or database
+        session_data = active_sessions.get(session_id)
+        if not session_data:
+            session_data = db_manager.get_session(session_id)
+            if not session_data:
+                return jsonify({'status': 'error', 'message': 'Session not found'}), 404
+
+        analysis_data = session_data.get('analysis', {})
+        if not analysis_data:
+            return jsonify({'status': 'error', 'message': 'No analysis data available'}), 400
+
+        # Extract analysis components
+        core_metrics = analysis_data.get('core_metrics', {})
+        speech_metrics = analysis_data.get('speech_metrics', {})
+        voice_metrics = analysis_data.get('voice_metrics', {})
+
+        # Store eye tracking data
+        print(f"✅ Saving eye tracking data for session {session_id}")
+        eye_data = {
+            'eye_contact': core_metrics.get('eye_contact_score', 0) > 50,
+            'eye_contact_percentage': core_metrics.get('eye_contact_score', 0),
+            'gaze_x': None,
+            'gaze_y': None,
+            'blink_rate': core_metrics.get('blink_rate', 0),
+            'frame_data': {'core_metrics': core_metrics}
+        }
+        db_manager.store_eye_tracking_data(session_id, eye_data)
+
+        # Store speech analysis data
+        print(f"✅ Saving speech analysis data for session {session_id}")
+        speech_data = {
+            'accuracy_score': speech_metrics.get('accuracy_score', 0),
+            'wpm': speech_metrics.get('wpm', 0),
+            'grammar_errors': speech_metrics.get('grammar_errors', 0),
+            'spelling_errors': speech_metrics.get('spelling_errors', 0),
+            'average_volume': voice_metrics.get('average_volume', 0),
+            'volume_variance': voice_metrics.get('volume_variance', 0),
+            'average_pitch': voice_metrics.get('average_pitch', 0),
+            'pitch_range': voice_metrics.get('pitch_range', 0),
+            'voice_duration_seconds': voice_metrics.get('voice_duration_seconds', 0),
+            'analysis_details': speech_metrics
+        }
+        db_manager.store_speech_analysis_data(session_id, speech_data)
+
+        # Store progress metrics
+        print(f"✅ Saving progress metrics for user {user_id}")
+        db_manager.store_session_progress_metrics(user_id, analysis_data)
+
+        # Update leaderboard
+        print(f"✅ Updating leaderboard for user {user_id}")
+        db_manager.update_leaderboard(user_id, 'all')
+        db_manager.update_leaderboard(user_id, 'weekly')
+        db_manager.update_leaderboard(user_id, 'monthly')
+
+        # Generate AI recommendations
+        print(f"✅ Generating AI recommendations for session {session_id}")
+        ai_feedback = session_data.get('ai_feedback', {})
+        db_manager.generate_ai_recommendations_from_analysis(session_id, user_id, analysis_data, ai_feedback)
+
+        # Commit all changes
+        print("💾 Database commit successful")
+        db.session.commit()
+
+        print(f"✅ Analysis data saved successfully for user {user_id}, session {session_id}")
+        return jsonify({'status': 'success', 'message': 'Analysis data saved successfully'})
+
+    except Exception as e:
+        print(f"❌ Error saving analysis data: {e}")
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 
 @socketio.on('connect')
 def handle_connect():
@@ -1620,6 +1704,9 @@ def save_session(session_id, session_data):
             print(f"❌ Fallback file save also failed: {file_error}")
 
 if __name__ == '__main__':
+    # Initialize database in main block
+    init_db(app)
+
     print("🚀 Starting SPEAK - Advanced Professional Speech Analysis")
     print("📍 Server running at: http://localhost:5000")
     print("IMPROVED eye contact detection activated")

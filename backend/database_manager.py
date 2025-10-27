@@ -25,9 +25,11 @@ class DatabaseManager:
             )
             db.session.add(user)
             db.session.commit()
+            print(f"✅ User created successfully: {user.id}")
             return user.to_dict()
         except Exception as e:
             db.session.rollback()
+            print(f"❌ Failed to create user: {e}")
             raise e
 
     def get_user_by_email(self, email):
@@ -69,9 +71,11 @@ class DatabaseManager:
             )
             db.session.add(session)
             db.session.commit()
+            print(f"✅ Session created successfully: {session_id}")
             return session.to_dict()
         except Exception as e:
             db.session.rollback()
+            print(f"❌ Failed to create session {session_id}: {e}")
             raise e
 
     def get_session(self, session_id):
@@ -146,9 +150,11 @@ class DatabaseManager:
             )
             db.session.add(data_point)
             db.session.commit()
+            print(f"✅ Eye tracking data stored for session {session_id}")
             return data_point.to_dict()
         except Exception as e:
             db.session.rollback()
+            print(f"❌ Failed to store eye tracking data for session {session_id}: {e}")
             raise e
 
     def get_eye_tracking_data(self, session_id):
@@ -177,9 +183,11 @@ class DatabaseManager:
             )
             db.session.add(analysis)
             db.session.commit()
+            print(f"✅ Speech analysis data stored for session {session_id}")
             return analysis.to_dict()
         except Exception as e:
             db.session.rollback()
+            print(f"❌ Failed to store speech analysis data for session {session_id}: {e}")
             raise e
 
     def get_speech_analysis_data(self, session_id):
@@ -209,9 +217,58 @@ class DatabaseManager:
             db.session.rollback()
             raise e
 
+    def clear_user_recommendations(self, user_id):
+        """Clear all AI recommendations for a user"""
+        try:
+            AIRecommendation.query.filter_by(user_id=user_id).delete()
+            db.session.commit()
+            print(f"✅ Cleared all recommendations for user {user_id}")
+        except Exception as e:
+            db.session.rollback()
+            raise e
+
+    def get_user_avg_metrics(self, user_id):
+        """Get user's average metrics across all sessions"""
+        user_sessions = self.get_user_sessions(user_id, limit=100)
+        speech_accuracy_scores = []
+        wpm_scores = []
+        eye_contact_scores = []
+
+        for session in user_sessions:
+            analysis = session.get('analysis', {})
+            if analysis:
+                speech_metrics = analysis.get('speech_metrics', {})
+                core_metrics = analysis.get('core_metrics', {})
+
+                acc = speech_metrics.get('accuracy_score', 0)
+                if acc > 0:
+                    speech_accuracy_scores.append(acc)
+
+                w = speech_metrics.get('wpm', 0)
+                if w > 0:
+                    wpm_scores.append(w)
+
+                ec = core_metrics.get('eye_contact_score', 0)
+                if ec > 0:
+                    eye_contact_scores.append(ec)
+
+        avg_speech_accuracy = sum(speech_accuracy_scores) / len(speech_accuracy_scores) if speech_accuracy_scores else 0
+        avg_wpm = sum(wpm_scores) / len(wpm_scores) if wpm_scores else 0
+        avg_eye_contact = sum(eye_contact_scores) / len(eye_contact_scores) if eye_contact_scores else 0
+        avg_score = (avg_eye_contact + avg_speech_accuracy) / 2 if avg_eye_contact and avg_speech_accuracy else avg_eye_contact or avg_speech_accuracy or 0
+
+        return {
+            'avg_speech_accuracy': round(avg_speech_accuracy, 1),
+            'avg_wpm': round(avg_wpm, 1),
+            'avg_eye_contact': round(avg_eye_contact, 1),
+            'avg_score': round(avg_score, 1)
+        }
+
     def generate_ai_recommendations_from_analysis(self, session_id, user_id, session_analysis, ai_feedback):
         """Generate AI recommendations based on session analysis and AI feedback"""
         try:
+            # Clear old recommendations before generating new ones
+            self.clear_user_recommendations(user_id)
             recommendations = []
 
             # Extract key metrics
