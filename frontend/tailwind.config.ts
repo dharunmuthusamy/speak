@@ -59,6 +59,11 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        // Dual Harmony Theme Colors
+        mauve: "hsl(var(--mauve))",
+        indigo: "hsl(var(--indigo))",
+        tekhelet: "hsl(var(--tekhelet))",
+        "dark-purple": "hsl(var(--dark-purple))",
       },
       borderRadius: {
         lg: "var(--radius)",

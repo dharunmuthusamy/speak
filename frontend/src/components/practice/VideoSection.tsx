@@ -19,17 +19,17 @@ const VideoSection: React.FC<VideoSectionProps> = ({ isActive, videoRef, canvasR
       </CardHeader>
       <CardContent>
         <div className="relative">
-          <div className="mx-auto" style={{ width: '600px', height: '400px' }}>
+          <div className="max-w-[600px] mx-auto">
             {isActive ? (
               <video
                 ref={videoRef}
-                className="w-full h-full object-cover rounded-lg border"
+                className="w-full aspect-square object-cover rounded-lg border"
                 autoPlay
                 muted
                 playsInline
               />
             ) : (
-              <div className="w-full h-full bg-gray-100 rounded-lg border flex items-center justify-center">
+              <div className="w-full aspect-square bg-gray-100 rounded-lg border flex items-center justify-center">
                 <p className="text-gray-500 text-lg">Click "Start Record" to begin</p>
               </div>
             )}

@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { PracticeSessionProvider } from "@/contexts/PracticeSessionContext";
 import { SessionProvider } from "@/contexts/SessionContext";
+import DualHarmonyTheme from "@/components/DualHarmonyTheme";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Practice from "./pages/Practice";
@@ -21,18 +22,20 @@ const App = () => (
       <PracticeSessionProvider>
         <SessionProvider>
           <TooltipProvider>
-            <Toaster />
-            <Sonner />
-            <BrowserRouter>
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/auth" element={<Auth />} />
-                <Route path="/practice" element={<Practice />} />
-                <Route path="/session-records" element={<SessionRecords />} />
-                <Route path="/session-details/:sessionId" element={<SessionDetails />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </BrowserRouter>
+            <DualHarmonyTheme>
+              <Toaster />
+              <Sonner />
+              <BrowserRouter>
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/auth" element={<Auth />} />
+                  <Route path="/practice" element={<Practice />} />
+                  <Route path="/session-records" element={<SessionRecords />} />
+                  <Route path="/session-details/:sessionId" element={<SessionDetails />} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </BrowserRouter>
+            </DualHarmonyTheme>
           </TooltipProvider>
         </SessionProvider>
       </PracticeSessionProvider>

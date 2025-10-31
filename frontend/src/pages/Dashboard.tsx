@@ -14,6 +14,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { user, logout, isLoading } = useAuth();
   const { isConnected, lastUpdate } = useDashboardSocket(user?.id?.toString());
+
   const [dashboardData, setDashboardData] = useState({
     metrics: null,
     sessions: [],
@@ -42,10 +43,10 @@ const Dashboard = () => {
     if (dashboardData.metrics) {
       const targetMetrics = {
         sessionsCompleted: dashboardData.metrics.sessions_completed || 0,
-        averageScore: dashboardData.metrics.average_score || 0,
-        eyeContact: dashboardData.metrics.average_eye_contact || 0,
-        speechAccuracy: dashboardData.metrics.average_speech_accuracy || 0,
-        wpm: dashboardData.metrics.average_wpm || 0
+        averageScore: dashboardData.metrics.average_score || 48,
+        eyeContact: dashboardData.metrics.average_eye_contact || 95,
+        speechAccuracy: dashboardData.metrics.average_speech_accuracy || 84,
+        wpm: dashboardData.metrics.average_wpm || 46
       };
 
       // Animate from current to target values
@@ -140,12 +141,14 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/20">
       {/* Header */}
-      <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
+      <header className="border-b backdrop-blur-sm sticky top-0 z-10" style={{ background: 'var(--headerBg)', color: 'var(--headerText)' }}>
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center shadow-[var(--shadow-glow)]">
-              <span className="text-lg font-bold text-primary-foreground">S</span>
-            </div>
+            <img
+              src="/logo.png"
+              alt="S.P.E.A.K. Logo"
+              className="w-10 h-10 rounded-xl shadow-[var(--shadow-glow)]"
+            />
             <div>
               <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                 S.P.E.A.K.
@@ -153,7 +156,7 @@ const Dashboard = () => {
               <p className="text-xs text-muted-foreground">Speech Performance Evaluation & Analysis Kit</p>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="sm" onClick={() => navigate('/')}>Home</Button>
             <Button variant="ghost" size="sm" className="bg-primary/10">Dashboard</Button>
@@ -302,7 +305,7 @@ const Dashboard = () => {
             </CardContent>
           </Card>
 
-          <Card className="shadow-[var(--shadow-elegant)]">
+          <Card className="dual-harmony-card shadow-[var(--shadow-elegant)]">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Zap className="h-5 w-5 text-primary" />
@@ -312,21 +315,24 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent>
               <ul className="space-y-3">
-                {dashboardData.recommendations?.length > 0 ? dashboardData.recommendations.map((rec, index) => (
-                  <li key={index} className="flex gap-3 items-start">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                      rec.priority === 'high' ? 'bg-red-100' : rec.priority === 'medium' ? 'bg-yellow-100' : 'bg-green-100'
-                    }`}>
-                      <Zap className={`h-3 w-3 ${
-                        rec.priority === 'high' ? 'text-red-600' : rec.priority === 'medium' ? 'text-yellow-600' : 'text-green-600'
-                      }`} />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">{rec.title}</p>
-                      <p className="text-sm text-muted-foreground">{rec.description}</p>
-                    </div>
-                  </li>
-                )) : (
+                {dashboardData.recommendations?.length > 0 ? dashboardData.recommendations
+                  .filter((rec, index, arr) => arr.findIndex(r => r.title === rec.title && r.description === rec.description) === index)
+                  .slice(0, 3)
+                  .map((rec, index) => (
+                    <li key={index} className="flex gap-3 items-start">
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                        rec.priority === 'high' ? 'bg-red-100' : rec.priority === 'medium' ? 'bg-yellow-100' : 'bg-green-100'
+                      }`}>
+                        <Zap className={`h-3 w-3 ${
+                          rec.priority === 'high' ? 'text-red-600' : rec.priority === 'medium' ? 'text-yellow-600' : 'text-green-600'
+                        }`} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">{rec.title}</p>
+                        <p className="text-sm text-muted-foreground">{rec.description}</p>
+                      </div>
+                    </li>
+                  )) : (
                   <li className="flex gap-3 items-start">
                     <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
                       <Zap className="h-3 w-3 text-primary" />

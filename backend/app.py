@@ -1143,6 +1143,7 @@ def analyze_session():
         user_id = data.get('user_id')
 
         if not session_id or not user_id:
+            print(f"❌ Missing required parameters: session_id={session_id}, user_id={user_id}")
             return jsonify({'status': 'error', 'message': 'session_id and user_id are required'}), 400
 
         print(f"🔄 Starting analysis for session {session_id}, user {user_id}")
@@ -1150,21 +1151,30 @@ def analyze_session():
         # Retrieve session data from active_sessions or database
         session_data = active_sessions.get(session_id)
         if not session_data:
+            print(f"📋 Session {session_id} not in active_sessions, checking database")
             session_data = db_manager.get_session(session_id)
             if not session_data:
+                print(f"❌ Session {session_id} not found in database")
                 return jsonify({'status': 'error', 'message': 'Session not found'}), 404
 
         analysis_data = session_data.get('analysis', {})
         if not analysis_data:
+            print(f"❌ No analysis data available for session {session_id}")
             return jsonify({'status': 'error', 'message': 'No analysis data available'}), 400
+
+        print(f"📊 Analysis data found: {list(analysis_data.keys())}")
 
         # Extract analysis components
         core_metrics = analysis_data.get('core_metrics', {})
         speech_metrics = analysis_data.get('speech_metrics', {})
         voice_metrics = analysis_data.get('voice_metrics', {})
 
+        print(f"📈 Core metrics: eye_contact={core_metrics.get('eye_contact_score', 0)}")
+        print(f"📈 Speech metrics: accuracy={speech_metrics.get('accuracy_score', 0)}, wpm={speech_metrics.get('wpm', 0)}")
+        print(f"📈 Voice metrics: {list(voice_metrics.keys()) if voice_metrics else 'None'}")
+
         # Store eye tracking data
-        print(f"✅ Saving eye tracking data for session {session_id}")
+        print(f"👁️ Storing eye tracking data for session {session_id}")
         eye_data = {
             'eye_contact': core_metrics.get('eye_contact_score', 0) > 50,
             'eye_contact_percentage': core_metrics.get('eye_contact_score', 0),
@@ -1173,10 +1183,15 @@ def analyze_session():
             'blink_rate': core_metrics.get('blink_rate', 0),
             'frame_data': {'core_metrics': core_metrics}
         }
-        db_manager.store_eye_tracking_data(session_id, eye_data)
+        try:
+            eye_result = db_manager.store_eye_tracking_data(session_id, eye_data)
+            print(f"✅ Eye tracking data stored successfully: {eye_result}")
+        except Exception as e:
+            print(f"❌ Error saving eye tracking data: {e}")
+            raise e
 
         # Store speech analysis data
-        print(f"✅ Saving speech analysis data for session {session_id}")
+        print(f"🎤 Storing speech analysis data for session {session_id}")
         speech_data = {
             'accuracy_score': speech_metrics.get('accuracy_score', 0),
             'wpm': speech_metrics.get('wpm', 0),
@@ -1189,32 +1204,55 @@ def analyze_session():
             'voice_duration_seconds': voice_metrics.get('voice_duration_seconds', 0),
             'analysis_details': speech_metrics
         }
-        db_manager.store_speech_analysis_data(session_id, speech_data)
+        try:
+            speech_result = db_manager.store_speech_analysis_data(session_id, speech_data)
+            print(f"✅ Speech analysis data stored successfully: {speech_result}")
+        except Exception as e:
+            print(f"❌ Error saving speech analysis data: {e}")
+            raise e
 
         # Store progress metrics
-        print(f"✅ Saving progress metrics for user {user_id}")
-        db_manager.store_session_progress_metrics(user_id, analysis_data)
+        print(f"📊 Storing progress metrics for user {user_id}")
+        try:
+            progress_result = db_manager.store_session_progress_metrics(user_id, analysis_data)
+            print(f"✅ Progress metrics stored successfully: {progress_result}")
+        except Exception as e:
+            print(f"❌ Error saving progress metrics: {e}")
+            raise e
 
         # Update leaderboard
-        print(f"✅ Updating leaderboard for user {user_id}")
-        db_manager.update_leaderboard(user_id, 'all')
-        db_manager.update_leaderboard(user_id, 'weekly')
-        db_manager.update_leaderboard(user_id, 'monthly')
+        print(f"🏆 Updating leaderboard for user {user_id}")
+        try:
+            leaderboard_all = db_manager.update_leaderboard(user_id, 'all')
+            leaderboard_weekly = db_manager.update_leaderboard(user_id, 'weekly')
+            leaderboard_monthly = db_manager.update_leaderboard(user_id, 'monthly')
+            print(f"✅ Leaderboard updated successfully: all={leaderboard_all}, weekly={leaderboard_weekly}, monthly={leaderboard_monthly}")
+        except Exception as e:
+            print(f"❌ Error updating leaderboard: {e}")
+            raise e
 
         # Generate AI recommendations
-        print(f"✅ Generating AI recommendations for session {session_id}")
+        print(f"🤖 Generating AI recommendations for session {session_id}")
         ai_feedback = session_data.get('ai_feedback', {})
-        db_manager.generate_ai_recommendations_from_analysis(session_id, user_id, analysis_data, ai_feedback)
+        try:
+            ai_recommendations = db_manager.generate_ai_recommendations_from_analysis(session_id, user_id, analysis_data, ai_feedback)
+            print(f"✅ AI recommendations generated successfully: {len(ai_recommendations)} recommendations")
+        except Exception as e:
+            print(f"❌ Error generating AI recommendations: {e}")
+            raise e
 
-        # Commit all changes
-        print("💾 Database commit successful")
+        # Final commit to ensure all changes are saved
+        print("💾 Performing final database commit")
         db.session.commit()
+        print("✅ Database commit successful")
 
-        print(f"✅ Analysis data saved successfully for user {user_id}, session {session_id}")
-        return jsonify({'status': 'success', 'message': 'Analysis data saved successfully'})
+        print(f"🎉 Analysis completed successfully for user {user_id}, session {session_id}")
+        return jsonify({'status': 'success', 'message': 'Analysis completed'})
 
     except Exception as e:
-        print(f"❌ Error saving analysis data: {e}")
+        print(f"❌ Critical error in analyze_session: {e}")
+        import traceback
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
